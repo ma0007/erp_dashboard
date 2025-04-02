@@ -1,0 +1,42 @@
+# Python Virtual Environments
+venv/
+tpster_env/
+*/__pycache__/
+__pycache__/
+
+# Runtime generated folders (adjust if necessary)
+output_files/
+uploads/
+
+# Data files (ignore common data formats)
+*.csv
+*.xlsx
+*.xls
+*.json
+*.xml
+*.db
+*.sqlite
+*.sqlite3
+
+# Operating System specific files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor specific files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Secrets / Credentials (if you ever add any)
+# *.env
+# credentials.json
+
+# Build artifacts / Distribution folders
+dist/
+build/
+*.egg-info/
+
+# Log files
+*.log
