@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # v2.5.8: Final fixes including pricing ceiling rounding, chart rewrite/cleanup, and welcome screen redesign.
 # v2.5.9: Implemented session state to prevent rerun loops on file load errors.
+# v2.5.9-mobile-logo-center-v2: Centered logo in sidebar using base64 data URI and HTML/CSS.
 
 import streamlit as st
 import pandas as pd
@@ -15,6 +16,7 @@ import pytz # Using pytz for timezone handling
 import streamlit.components.v1 as components
 import traceback # For detailed error logging if needed
 import math # Added for ceiling rounding
+import base64 # Added for image encoding
 
 # --- Constants ---
 TOP_N_DISPLAY = 150 # Max rows to display in tables (performance)
@@ -64,7 +66,7 @@ if font_path:
     except Exception as font_err:
         print(f"加载字体文件 '{font_path}' 时出错: {font_err}") # Log error to console
 else:
-     print(f"警告：在常见位置及脚本目录未找到中文字体文件 (如 SimHei.ttf)。") # Log warning
+    print(f"警告：在常见位置及脚本目录未找到中文字体文件 (如 SimHei.ttf)。") # Log warning
 
 # Ensure negative signs display correctly even with CJK fonts
 plt.rcParams['axes.unicode_minus'] = False
@@ -81,6 +83,26 @@ if 'last_pricing_file_id' not in st.session_state:
 
 
 # ======== Helper Functions ========
+
+# --- Function to encode image to base64 ---
+def get_image_as_base64(path):
+    """Reads an image file and returns its base64 encoded data URI."""
+    try:
+        with open(path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode()
+        # Basic image type detection from extension
+        image_type = os.path.splitext(path)[1].lower().replace('.', '')
+        # Add more types if needed, provide fallback
+        supported_types = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp']
+        if image_type not in supported_types:
+            image_type = 'png' # Default fallback if extension is unknown/unsupported
+        return f"data:image/{image_type};base64,{encoded_string}"
+    except FileNotFoundError:
+        print(f"Error: Logo file not found at {path}")
+        return None
+    except Exception as e:
+        print(f"Error encoding image {path}: {e}")
+        return None
 
 # --- load_data 函数 (For Main Analysis) ---
 @st.cache_data(ttl=timedelta(minutes=10))
@@ -165,7 +187,7 @@ def load_data(uploaded_file_content, uploaded_file_name):
         if not all(col in sales_df.columns for col in required_sales_cols):
             raise ValueError(f"'订单数据' 缺少必需列: {', '.join([c for c in required_sales_cols if c not in sales_df.columns])}")
         if not stock_df.empty and not all(col in stock_df.columns for col in required_stock_cols):
-                 raise ValueError(f"'库存数据' 缺少必需列: {', '.join([c for c in required_stock_cols if c not in stock_df.columns])}")
+             raise ValueError(f"'库存数据' 缺少必需列: {', '.join([c for c in required_stock_cols if c not in stock_df.columns])}")
         # Only validate purchase columns if the purchase_df is not empty
         if purchase_df is not None and not purchase_df.empty and not all(col in purchase_df.columns for col in required_purchase_cols):
             raise ValueError(f"'采购数据' 工作表存在但缺少必需列: {', '.join([c for c in required_purchase_cols if c not in purchase_df.columns])}")
@@ -193,15 +215,15 @@ def load_data(uploaded_file_content, uploaded_file_name):
                          df_loop[col] = df_loop[col].fillna(0)
                          # Attempt integer conversion only if feasible
                          try:
-                             # Check if all non-zero values are whole numbers after filling NaNs
-                             non_zero_mask = df_loop[col] != 0
-                             if not non_zero_mask.any() or (df_loop.loc[non_zero_mask, col] % 1 == 0).all():
-                                 # Convert to largest integer type to avoid overflow
-                                 df_loop[col] = df_loop[col].astype(np.int64)
+                              # Check if all non-zero values are whole numbers after filling NaNs
+                              non_zero_mask = df_loop[col] != 0
+                              if not non_zero_mask.any() or (df_loop.loc[non_zero_mask, col] % 1 == 0).all():
+                                   # Convert to largest integer type to avoid overflow
+                                   df_loop[col] = df_loop[col].astype(np.int64)
                              # Otherwise, keep as float if there are decimals
                          except Exception:
-                             # If int conversion fails for any reason, keep as float
-                             pass
+                              # If int conversion fails for any reason, keep as float
+                              pass
                      elif col in ["采购价"] and key == 'stock':
                          # If optional '采购价' is missing in stock, add it as 0 float
                          df_loop[col] = 0.0
@@ -444,28 +466,28 @@ def calculate_metrics(sales_df, stock_df, purchase_df, start_date, end_date):
 
             if not purchase_df_valid.empty:
                  try:
-                     # Ensure purchase quantity is numeric for potential use later (though not directly used for mapping date)
-                     purchase_df_valid['采购数量'] = pd.to_numeric(purchase_df_valid['采购数量'], errors='coerce').fillna(0)
-                     # Find index of the latest purchase date per product ID
-                     last_purchase_idx = purchase_df_valid.groupby('产品ID')['采购日期'].idxmax()
-                     # Create mapping dataframe: Product ID -> Last Purchase Date, Last Purchase Qty
-                     last_purchase_map = purchase_df_valid.loc[last_purchase_idx].set_index('产品ID')
+                      # Ensure purchase quantity is numeric for potential use later (though not directly used for mapping date)
+                      purchase_df_valid['采购数量'] = pd.to_numeric(purchase_df_valid['采购数量'], errors='coerce').fillna(0)
+                      # Find index of the latest purchase date per product ID
+                      last_purchase_idx = purchase_df_valid.groupby('产品ID')['采购日期'].idxmax()
+                      # Create mapping dataframe: Product ID -> Last Purchase Date, Last Purchase Qty
+                      last_purchase_map = purchase_df_valid.loc[last_purchase_idx].set_index('产品ID')
 
-                     # Map last purchase date and quantity to stock analysis table
-                     stock_analysis['最后采购日期'] = stock_analysis['产品ID'].map(last_purchase_map['采购日期'])
-                     stock_analysis['最后采购数量'] = stock_analysis['产品ID'].map(last_purchase_map['采购数量'])
+                      # Map last purchase date and quantity to stock analysis table
+                      stock_analysis['最后采购日期'] = stock_analysis['产品ID'].map(last_purchase_map['采购日期'])
+                      stock_analysis['最后采购数量'] = stock_analysis['产品ID'].map(last_purchase_map['采购数量'])
 
-                     # Calculate days since last purchase
-                     if '最后采购日期' in stock_analysis.columns:
-                         # Ensure date is datetime and naive
-                         stock_analysis["最后采购日期"] = pd.to_datetime(stock_analysis["最后采购日期"], errors='coerce').dt.tz_localize(None)
-                         valid_purchase_dates_mask = stock_analysis['最后采购日期'].notna()
-                         stock_analysis.loc[valid_purchase_dates_mask, "天数自上次采购"] = (now_ts_naive - stock_analysis.loc[valid_purchase_dates_mask, "最后采购日期"]).dt.days
+                      # Calculate days since last purchase
+                      if '最后采购日期' in stock_analysis.columns:
+                          # Ensure date is datetime and naive
+                          stock_analysis["最后采购日期"] = pd.to_datetime(stock_analysis["最后采购日期"], errors='coerce').dt.tz_localize(None)
+                          valid_purchase_dates_mask = stock_analysis['最后采购日期'].notna()
+                          stock_analysis.loc[valid_purchase_dates_mask, "天数自上次采购"] = (now_ts_naive - stock_analysis.loc[valid_purchase_dates_mask, "最后采购日期"]).dt.days
 
-                     # Fill NaN (no purchase record or error) with 9999, convert to int, clip max
-                     stock_analysis["天数自上次采购"] = stock_analysis["天数自上次采购"].fillna(9999).astype(int).clip(upper=9999)
-                     # Fill NaN quantity with 0 and convert to int
-                     stock_analysis["最后采购数量"] = stock_analysis["最后采购数量"].fillna(0).astype(int)
+                      # Fill NaN (no purchase record or error) with 9999, convert to int, clip max
+                      stock_analysis["天数自上次采购"] = stock_analysis["天数自上次采购"].fillna(9999).astype(int).clip(upper=9999)
+                      # Fill NaN quantity with 0 and convert to int
+                      stock_analysis["最后采购数量"] = stock_analysis["最后采购数量"].fillna(0).astype(int)
 
                  except Exception as merge_err:
                       st.warning(f"合并采购数据时出错: {merge_err}")
@@ -624,17 +646,48 @@ if not FONT_AVAILABLE:
 # --- Sidebar ---
 with st.sidebar:
     st.markdown(" ")
-    logo_path = "tpster_logo.png"
-    logo_cols = st.columns([1, 2, 1])
-    with logo_cols[1]:
-        if os.path.exists(logo_path):
-            st.image(logo_path, width=180)
-        else:
-            # Placeholder if logo not found
-            st.image("https://via.placeholder.com/180x80?text=TP.STER+LOGO", width=180)
-            st.caption("Logo Placeholder")
+    logo_path = "tpster_logo.png" # Ensure your logo file is named this and in the same directory
 
-    st.markdown(" ")
+    # --- MODIFIED LOGO DISPLAY (v2 - Base64) ---
+    logo_data_uri = None
+    placeholder_needed = True
+    placeholder_url = "https://via.placeholder.com/180x80?text=TP.STER+LOGO"
+    error_msg_logo = None
+
+    if os.path.exists(logo_path):
+        logo_data_uri = get_image_as_base64(logo_path)
+        if logo_data_uri:
+            placeholder_needed = False
+        else:
+            # File exists but encoding failed
+            error_msg_logo = "Error loading logo file."
+            placeholder_needed = True # Fallback to placeholder
+    else:
+        # File does not exist
+        placeholder_needed = True
+
+
+    image_source = logo_data_uri if not placeholder_needed else placeholder_url
+
+    # Use markdown with centered div and img tag
+    st.markdown(
+        f"""
+        <div style="text-align: center; margin-bottom: 5px;">
+            <img src="{image_source}" alt="Logo" width="180" style="display: block; margin-left: auto; margin-right: auto;">
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Display caption or error centered below the image
+    if placeholder_needed and not error_msg_logo:
+        st.markdown("<div style='text-align: center; margin-top: 0px;'><p style='font-size: 0.8em; color: grey;'>Logo Placeholder</p></div>", unsafe_allow_html=True)
+    elif error_msg_logo:
+         st.markdown(f"<div style='text-align: center; margin-top: 0px;'><p style='font-size: 0.8em; color: red;'>{error_msg_logo}</p></div>", unsafe_allow_html=True)
+    # --- END OF MODIFIED LOGO DISPLAY ---
+
+
+    st.markdown(" ") # Add space after logo/caption
     st.markdown(f"<div style='text-align: center; font-size: 12px; color: gray;'>版本: {APP_VERSION}</div>", unsafe_allow_html=True)
     # Example User Info - Replace with actual authentication if needed
     st.markdown("<div style='text-align: center; font-size: 14px; color: gray; margin-bottom: 10px; margin-top: 5px;'>当前身份：<strong>管理员</strong> (示例)</div>", unsafe_allow_html=True)
@@ -700,9 +753,9 @@ with st.sidebar:
 
     # If user clears the file uploader, reset the state
     elif not uploaded_main_file and st.session_state.last_main_file_id is not None:
-         st.session_state.last_main_file_id = None
-         st.session_state.main_load_error = None
-         main_analysis_ready = False # Ensure state is reset
+        st.session_state.last_main_file_id = None
+        st.session_state.main_load_error = None
+        main_analysis_ready = False # Ensure state is reset
 
 
     # -- Process Pricing Data File (Similar Logic) --
@@ -766,9 +819,9 @@ with st.sidebar:
                     key="category_select_key"
                 )
             except Exception as cat_err:
-                 st.warning(f"加载产品分类选项时出错: {cat_err}")
-                 selected_category = "全部" # Fallback
-                 has_category_column_main = False # Disable filtering if error occurs
+                st.warning(f"加载产品分类选项时出错: {cat_err}")
+                selected_category = "全部" # Fallback
+                has_category_column_main = False # Disable filtering if error occurs
         else:
             selected_category = "全部" # Set default if no category data
 
@@ -781,10 +834,10 @@ with st.sidebar:
              valid_dates = main_sales_data['订单日期'].dropna()
              if not valid_dates.empty:
                  try:
-                     min_date_allowed = valid_dates.min().date()
-                     max_date_allowed = valid_dates.max().date()
+                      min_date_allowed = valid_dates.min().date()
+                      max_date_allowed = valid_dates.max().date()
                  except Exception as date_parse_err:
-                     st.warning(f"无法解析销售数据中的日期范围: {date_parse_err}")
+                      st.warning(f"无法解析销售数据中的日期范围: {date_parse_err}")
 
         # Determine final min/max for the date picker, considering data range and default range
         final_min_date = min(min_date_allowed, default_start_date) if min_date_allowed else default_start_date
@@ -992,40 +1045,40 @@ elif uploaded_main_file or uploaded_pricing_file:
                  if isinstance(monthly_data, pd.Series) and not monthly_data.empty and not (monthly_data.isnull().all() or (monthly_data == 0).all()):
                      fig_line = None # Initialize figure variable
                      try:
-                         # Convert PeriodIndex to Timestamp for plotting
-                         plot_index = monthly_data.index.to_timestamp()
-                         fig_line, ax_line = plt.subplots(figsize=(8, 3))
-                         ax_line.plot(plot_index, monthly_data.values, marker='o', linestyle='-', linewidth=1.5, markersize=4, color='#1f77b4')
+                          # Convert PeriodIndex to Timestamp for plotting
+                          plot_index = monthly_data.index.to_timestamp()
+                          fig_line, ax_line = plt.subplots(figsize=(8, 3))
+                          ax_line.plot(plot_index, monthly_data.values, marker='o', linestyle='-', linewidth=1.5, markersize=4, color='#1f77b4')
 
-                         xlabel, ylabel = "月份", "购买数量 (个)"
-                         # Apply Chinese font if available
-                         if FONT_AVAILABLE and chinese_font:
-                             ax_line.set_xlabel(xlabel, fontproperties=chinese_font, fontsize=9)
-                             ax_line.set_ylabel(ylabel, fontproperties=chinese_font, fontsize=9)
-                             # Set font for tick labels
-                             for label in ax_line.get_xticklabels() + ax_line.get_yticklabels():
-                                 label.set_fontproperties(chinese_font)
-                                 label.set_fontsize(8)
-                         else:
-                             ax_line.set_xlabel(xlabel, fontsize=9)
-                             ax_line.set_ylabel(ylabel, fontsize=9)
-                             for label in ax_line.get_xticklabels() + ax_line.get_yticklabels():
-                                 label.set_fontsize(8)
+                          xlabel, ylabel = "月份", "购买数量 (个)"
+                          # Apply Chinese font if available
+                          if FONT_AVAILABLE and chinese_font:
+                              ax_line.set_xlabel(xlabel, fontproperties=chinese_font, fontsize=9)
+                              ax_line.set_ylabel(ylabel, fontproperties=chinese_font, fontsize=9)
+                              # Set font for tick labels
+                              for label in ax_line.get_xticklabels() + ax_line.get_yticklabels():
+                                   label.set_fontproperties(chinese_font)
+                                   label.set_fontsize(8)
+                          else:
+                              ax_line.set_xlabel(xlabel, fontsize=9)
+                              ax_line.set_ylabel(ylabel, fontsize=9)
+                              for label in ax_line.get_xticklabels() + ax_line.get_yticklabels():
+                                   label.set_fontsize(8)
 
-                         # Format x-axis dates
-                         ax_line.xaxis.set_major_formatter(mdates.DateFormatter("%Y年%m月"))
-                         # Adjust date locator interval based on data length
-                         ax_line.xaxis.set_major_locator(mdates.MonthLocator(interval=max(1, len(plot_index)//6)))
-                         ax_line.grid(axis='y', linestyle=':', alpha=0.7)
-                         fig_line.autofmt_xdate(rotation=30, ha='right') # Auto format date labels
-                         plt.tight_layout() # Adjust layout
-                         st.pyplot(fig_line, clear_figure=True) # Display plot
+                          # Format x-axis dates
+                          ax_line.xaxis.set_major_formatter(mdates.DateFormatter("%Y年%m月"))
+                          # Adjust date locator interval based on data length
+                          ax_line.xaxis.set_major_locator(mdates.MonthLocator(interval=max(1, len(plot_index)//6)))
+                          ax_line.grid(axis='y', linestyle=':', alpha=0.7)
+                          fig_line.autofmt_xdate(rotation=30, ha='right') # Auto format date labels
+                          plt.tight_layout() # Adjust layout
+                          st.pyplot(fig_line, clear_figure=True) # Display plot
 
                      except AttributeError as attr_err:
-                         st.warning(f"月度趋势图的日期格式无法被正确处理以进行绘图: {attr_err}")
+                          st.warning(f"月度趋势图的日期格式无法被正确处理以进行绘图: {attr_err}")
                      except Exception as e:
-                         st.error(f"绘制月度趋势图时出错: {e}")
-                         if fig_line is not None: plt.close(fig_line) # Close plot if error occurred during processing
+                          st.error(f"绘制月度趋势图时出错: {e}")
+                          if fig_line is not None: plt.close(fig_line) # Close plot if error occurred during processing
                  else:
                      st.caption("无足够数据绘制月度销售趋势。")
 
@@ -1037,50 +1090,50 @@ elif uploaded_main_file or uploaded_pricing_file:
                  if isinstance(top_data, pd.Series) and not top_data.empty and top_data.sum() > 0:
                      fig_pie = None # Initialize figure variable
                      try:
-                         pie_labels = [str(label) for label in top_data.index] # Ensure labels are strings
-                         pie_values = top_data.values
-                         fig_pie, ax_pie = plt.subplots(figsize=(5, 3)) # Adjust figure size if needed
+                          pie_labels = [str(label) for label in top_data.index] # Ensure labels are strings
+                          pie_values = top_data.values
+                          fig_pie, ax_pie = plt.subplots(figsize=(5, 3)) # Adjust figure size if needed
 
-                         # Define text properties, considering font availability
-                         text_props = {'fontproperties': chinese_font, 'size': 8} if FONT_AVAILABLE and chinese_font else {'size': 8}
-                         legend_props = {'prop': chinese_font} if FONT_AVAILABLE and chinese_font else {}
-                         title_fontprop = chinese_font if FONT_AVAILABLE and chinese_font else None
+                          # Define text properties, considering font availability
+                          text_props = {'fontproperties': chinese_font, 'size': 8} if FONT_AVAILABLE and chinese_font else {'size': 8}
+                          legend_props = {'prop': chinese_font} if FONT_AVAILABLE and chinese_font else {}
+                          title_fontprop = chinese_font if FONT_AVAILABLE and chinese_font else None
 
-                         # Use a suitable colormap
-                         colors = plt.get_cmap('Pastel1').colors
+                          # Use a suitable colormap
+                          colors = plt.get_cmap('Pastel1').colors
 
-                         wedges, texts, autotexts = ax_pie.pie(
-                             pie_values,
-                             autopct='%1.1f%%', # Format percentage
-                             startangle=90,
-                             pctdistance=0.85, # Distance of percentage text from center
-                             colors=colors,
-                             textprops=text_props # Apply font props to percentage labels
-                         )
+                          wedges, texts, autotexts = ax_pie.pie(
+                              pie_values,
+                              autopct='%1.1f%%', # Format percentage
+                              startangle=90,
+                              pctdistance=0.85, # Distance of percentage text from center
+                              colors=colors,
+                              textprops=text_props # Apply font props to percentage labels
+                          )
 
-                         # Set font for autotexts (percentages) explicitly if font is available
-                         if FONT_AVAILABLE and chinese_font:
-                            plt.setp(autotexts, fontproperties=chinese_font)
+                          # Set font for autotexts (percentages) explicitly if font is available
+                          if FONT_AVAILABLE and chinese_font:
+                             plt.setp(autotexts, fontproperties=chinese_font)
 
-                         ax_pie.axis('equal') # Equal aspect ratio ensures pie is drawn as a circle.
+                          ax_pie.axis('equal') # Equal aspect ratio ensures pie is drawn as a circle.
 
-                         # Add legend
-                         legend_title = "产品名称"
-                         # Position legend outside the pie
-                         ax_pie.legend(wedges, pie_labels,
-                                      title=legend_title,
-                                      loc="center left",
-                                      bbox_to_anchor=(1.05, 0, 0.5, 1), # Adjust anchor to position legend
-                                      fontsize=8,
-                                      prop=legend_props.get('prop'), # Font for legend items
-                                      title_fontproperties=title_fontprop) # Font for legend title
+                          # Add legend
+                          legend_title = "产品名称"
+                          # Position legend outside the pie
+                          ax_pie.legend(wedges, pie_labels,
+                                        title=legend_title,
+                                        loc="center left",
+                                        bbox_to_anchor=(1.05, 0, 0.5, 1), # Adjust anchor to position legend
+                                        fontsize=8,
+                                        prop=legend_props.get('prop'), # Font for legend items
+                                        title_fontproperties=title_fontprop) # Font for legend title
 
-                         plt.subplots_adjust(left=0.1, right=0.65) # Adjust subplot to make space for legend
-                         st.pyplot(fig_pie, clear_figure=True) # Display plot
+                          plt.subplots_adjust(left=0.1, right=0.65) # Adjust subplot to make space for legend
+                          st.pyplot(fig_pie, clear_figure=True) # Display plot
 
                      except Exception as e:
-                         st.error(f"绘制销量占比图时出错: {e}")
-                         if fig_pie is not None: plt.close(fig_pie) # Close plot on error
+                          st.error(f"绘制销量占比图时出错: {e}")
+                          if fig_pie is not None: plt.close(fig_pie) # Close plot on error
                  else:
                      st.caption("无足够数据绘制销量占比图。")
         elif not main_analysis_ready:
@@ -1099,10 +1152,10 @@ elif uploaded_main_file or uploaded_pricing_file:
              # Helper function for bucketing (can be defined inside or outside)
              def get_age_bucket(days):
                  try:
-                     if pd.isna(days): return "未知"
-                     days_int = int(float(days)) # Ensure it's treated as number
+                      if pd.isna(days): return "未知"
+                      days_int = int(float(days)) # Ensure it's treated as number
                  except (ValueError, TypeError, OverflowError):
-                     return "未知" # Handle non-numeric gracefully
+                      return "未知" # Handle non-numeric gracefully
 
                  if days_int == 9999: return "从未售出" # Special code for never sold / no last sale date
                  elif days_int <= 30: return "0-30 天"
@@ -1123,11 +1176,11 @@ elif uploaded_main_file or uploaded_pricing_file:
                      aging_data_sku = aging_data_sku[aging_data_sku > 0]
 
                      if not aging_data_sku.empty:
-                         # Use Streamlit's built-in bar chart
-                         st.bar_chart(aging_data_sku, use_container_width=True)
-                         st.caption("库存账龄根据产品最后销售日期计算。'从未售出'表示无销售记录或无法确定最后销售日期。")
+                          # Use Streamlit's built-in bar chart
+                          st.bar_chart(aging_data_sku, use_container_width=True)
+                          st.caption("库存账龄根据产品最后销售日期计算。'从未售出'表示无销售记录或无法确定最后销售日期。")
                      else:
-                         st.caption("无有效的库存账龄数据可供绘制。")
+                          st.caption("无有效的库存账龄数据可供绘制。")
                  else:
                      st.warning("无法计算库存账龄分布，缺少 '压货时间_天' 数据。")
              except Exception as e:
@@ -1146,19 +1199,19 @@ elif uploaded_main_file or uploaded_pricing_file:
              # Configure columns for st.data_editor
              dynamic_stock_config = {}
              base_stock_configs = {
-                "产品名称": st.column_config.TextColumn("产品名称", width="medium", help="产品名称"),
-                "产品分类": st.column_config.TextColumn("分类", width="small", help="产品所属分类"),
-                "当前库存": st.column_config.NumberColumn("当前库存", format="%d 个", help="当前实际库存数量"),
-                "期间日均销量": st.column_config.NumberColumn("期间日均销售", format="%.2f 个/天", help="所选分析周期内的平均每日销售数量"),
-                "预计可用天数": st.column_config.NumberColumn("预计可用天数", help="当前库存预计可维持天数 (9999代表>9999天或无近期销量)", format="%d 天"),
-                "压货时间_天": st.column_config.NumberColumn("压货天数", help="自上次售出至今的天数 (9999代表从未售出或无记录)", format="%d 天"),
-                "最后销售日期": st.column_config.DateColumn("最后销售日期", format="YYYY-MM-DD", help="该产品最后一次有销售记录的日期"),
-                "天数自上次采购": st.column_config.NumberColumn("距上次采购", help="自上次采购至今的天数 (9999代表无采购记录)", format="%d 天"),
-                "期间销售量": st.column_config.NumberColumn("期间销售量", format="%d 个", help="所选分析周期内的总销售数量"),
-                "最后采购日期": st.column_config.DateColumn("最后采购日期", format="YYYY-MM-DD", help="该产品最后一次有采购记录的日期"),
-                "最后采购数量": st.column_config.NumberColumn("最后采购数量", format="%d 个", help="最后一次采购的数量"),
-                "采购价": st.column_config.NumberColumn("采购价 (€)", format="%.2f", help="库存数据中记录的采购单价"),
-                # Add other relevant columns if needed
+                 "产品名称": st.column_config.TextColumn("产品名称", width="medium", help="产品名称"),
+                 "产品分类": st.column_config.TextColumn("分类", width="small", help="产品所属分类"),
+                 "当前库存": st.column_config.NumberColumn("当前库存", format="%d 个", help="当前实际库存数量"),
+                 "期间日均销量": st.column_config.NumberColumn("期间日均销售", format="%.2f 个/天", help="所选分析周期内的平均每日销售数量"),
+                 "预计可用天数": st.column_config.NumberColumn("预计可用天数", help="当前库存预计可维持天数 (9999代表>9999天或无近期销量)", format="%d 天"),
+                 "压货时间_天": st.column_config.NumberColumn("压货天数", help="自上次售出至今的天数 (9999代表从未售出或无记录)", format="%d 天"),
+                 "最后销售日期": st.column_config.DateColumn("最后销售日期", format="YYYY-MM-DD", help="该产品最后一次有销售记录的日期"),
+                 "天数自上次采购": st.column_config.NumberColumn("距上次采购", help="自上次采购至今的天数 (9999代表无采购记录)", format="%d 天"),
+                 "期间销售量": st.column_config.NumberColumn("期间销售量", format="%d 个", help="所选分析周期内的总销售数量"),
+                 "最后采购日期": st.column_config.DateColumn("最后采购日期", format="YYYY-MM-DD", help="该产品最后一次有采购记录的日期"),
+                 "最后采购数量": st.column_config.NumberColumn("最后采购数量", format="%d 个", help="最后一次采购的数量"),
+                 "采购价": st.column_config.NumberColumn("采购价 (€)", format="%.2f", help="库存数据中记录的采购单价"),
+                 # Add other relevant columns if needed
              }
 
              # Define which columns to show and in what order
@@ -1224,7 +1277,7 @@ elif uploaded_main_file or uploaded_pricing_file:
         elif not main_analysis_ready:
              st.info("请在左侧上传有效的 **百货城数据** 文件以查看库存分析。")
              if st.session_state.main_load_error:
-                 st.error(f"文件加载失败: {st.session_state.main_load_error}")
+                  st.error(f"文件加载失败: {st.session_state.main_load_error}")
         else: # main_analysis_ready is True, but stock_analysis is empty or invalid
              st.info("无详细库存数据可供分析。请检查上传的“百货城数据”文件中的 '库存数据' 或筛选条件。")
 
@@ -1242,13 +1295,13 @@ elif uploaded_main_file or uploaded_pricing_file:
              # Configure columns for display
              dynamic_purchase_config = {}
              base_purchase_configs = {
-                 "产品名称": st.column_config.TextColumn("产品名称", width="medium"),
-                 "产品分类": st.column_config.TextColumn("分类", width="small"),
-                 "当前库存": st.column_config.NumberColumn("当前库存", format="%d 个"),
-                 "期间日均销量": st.column_config.NumberColumn("期间日均销售", format="%.2f 个/天"),
-                 "预计可用天数": st.column_config.NumberColumn("当前可用天数", format="%d 天", help="基于当前库存和期间日均销量的估算"),
-                 "目标库存水平": st.column_config.NumberColumn("目标库存", help=f"目标({target_days_input}天)+安全({safety_days_input}天)所需库存量", format="%.0f 个"),
-                 "建议采购量": st.column_config.NumberColumn("建议采购量", format="%d 个", width="large", help="建议补充的数量 (已向上取整)")
+                  "产品名称": st.column_config.TextColumn("产品名称", width="medium"),
+                  "产品分类": st.column_config.TextColumn("分类", width="small"),
+                  "当前库存": st.column_config.NumberColumn("当前库存", format="%d 个"),
+                  "期间日均销量": st.column_config.NumberColumn("期间日均销售", format="%.2f 个/天"),
+                  "预计可用天数": st.column_config.NumberColumn("当前可用天数", format="%d 天", help="基于当前库存和期间日均销量的估算"),
+                  "目标库存水平": st.column_config.NumberColumn("目标库存", help=f"目标({target_days_input}天)+安全({safety_days_input}天)所需库存量", format="%.0f 个"),
+                  "建议采购量": st.column_config.NumberColumn("建议采购量", format="%d 个", width="large", help="建议补充的数量 (已向上取整)")
              }
 
              # Determine columns to show based on what's available in purchase_suggestions_display_limited
@@ -1300,7 +1353,7 @@ elif uploaded_main_file or uploaded_pricing_file:
              # Main data wasn't loaded successfully
              st.info("请先在左侧上传有效的 **百货城数据** 文件以生成采购建议。")
              if st.session_state.main_load_error:
-                 st.error(f"文件加载失败: {st.session_state.main_load_error}")
+                  st.error(f"文件加载失败: {st.session_state.main_load_error}")
          else:
              # Catchall for other states (e.g., purchase suggestion calculation failed)
              st.warning("无法生成采购建议。请检查库存分析数据和参数。")
@@ -1390,13 +1443,13 @@ elif uploaded_main_file or uploaded_pricing_file:
              st.info("请在左侧上传有效的 **价格调整** 文件 (需含 '产品ID'/'型号', '产品名称'/'品名', '采购价' 列) 以使用此工具。")
              # Show specific error if loading failed
              if st.session_state.pricing_load_error:
-                 st.error(f"文件加载失败: {st.session_state.pricing_load_error}")
+                  st.error(f"文件加载失败: {st.session_state.pricing_load_error}")
 
 
 # Fallback message if file upload was attempted but processing failed for *both* types (or only one was attempted and failed)
 # This might be redundant now with errors shown in sidebar/tabs, but can be a final catch-all.
 elif (uploaded_main_file and not main_analysis_ready) or (uploaded_pricing_file and not pricing_tool_ready):
-     st.error("❌ 上传的文件处理失败或包含无效数据。请检查侧边栏的错误信息，并根据提示检查文件格式和内容。")
+    st.error("❌ 上传的文件处理失败或包含无效数据。请检查侧边栏的错误信息，并根据提示检查文件格式和内容。")
 
 
 # Footer (appears only if a file was uploaded or attempted)
