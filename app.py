@@ -711,13 +711,53 @@ with st.sidebar:
     )
     st.divider()
 
+    # --- NEW: Additional Data Uploaders ---
+    st.markdown("#### 📊 财务数据 (可选)")
+    uploaded_financial_file = st.file_uploader(
+        label="上传财务数据文件 (Excel/CSV)",
+        type=["xlsx", "xls", "csv"],
+        key="financial_data_uploader",
+        help="上传包含收入、支出、利润等财务指标的文件。"
+    )
+    st.divider()
+
+    st.markdown("#### 👥 CRM 数据 (可选)")
+    uploaded_crm_file = st.file_uploader(
+        label="上传CRM数据文件 (Excel/CSV)",
+        type=["xlsx", "xls", "csv"],
+        key="crm_data_uploader",
+        help="上传包含客户信息、商机、活动等CRM数据的文件。"
+    )
+    st.divider()
+
+    st.markdown("#### 🏭 生产/运营数据 (可选)")
+    uploaded_production_file = st.file_uploader(
+        label="上传生产数据文件 (Excel/CSV)",
+        type=["xlsx", "xls", "csv"],
+        key="production_data_uploader",
+        help="上传包含生产订单、设备利用率、质量指标等数据的文件。"
+    )
+    st.divider()
+
+    st.markdown("#### 🧑‍💼 人力资源数据 (可选)")
+    uploaded_hr_file = st.file_uploader(
+        label="上传HR数据文件 (Excel/CSV)",
+        type=["xlsx", "xls", "csv"],
+        key="hr_data_uploader",
+        help="上传包含员工信息、出勤等HR数据的文件。"
+    )
+    st.divider()
+
     # --- Data Loading and State Management ---
     main_sales_data, main_stock_data, main_purchase_data = None, None, None
     pricing_data_loaded = None
     main_analysis_ready = False
     pricing_tool_ready = False
+    financial_data_ready = False # New state
+    crm_data_ready = False       # New state
+    production_data_ready = False # New state
+    hr_data_ready = False       # New state
     has_category_column_main = False
-
     # -- Process Main Data File --
     if uploaded_main_file:
         current_main_file_id = uploaded_main_file.file_id
@@ -790,6 +830,114 @@ with st.sidebar:
         st.session_state.pricing_load_error = None
         pricing_tool_ready = False # Ensure state is reset
 
+    # --- NEW: Process Additional Data Files (Placeholder Logic) ---
+    # Initialize session state for new file types if they don't exist
+    if 'financial_load_error' not in st.session_state: st.session_state.financial_load_error = None
+    if 'last_financial_file_id' not in st.session_state: st.session_state.last_financial_file_id = None
+    if 'crm_load_error' not in st.session_state: st.session_state.crm_load_error = None
+    if 'last_crm_file_id' not in st.session_state: st.session_state.last_crm_file_id = None
+    if 'production_load_error' not in st.session_state: st.session_state.production_load_error = None
+    if 'last_production_file_id' not in st.session_state: st.session_state.last_production_file_id = None
+    if 'hr_load_error' not in st.session_state: st.session_state.hr_load_error = None
+    if 'last_hr_file_id' not in st.session_state: st.session_state.last_hr_file_id = None
+
+    # Placeholder processing logic for Financial Data
+    financial_data_loaded = None
+    if uploaded_financial_file:
+        current_financial_file_id = uploaded_financial_file.file_id
+        if current_financial_file_id == st.session_state.last_financial_file_id and st.session_state.financial_load_error:
+            st.error(f"财务数据加载错误: {st.session_state.financial_load_error}")
+            financial_data_ready = False
+        elif current_financial_file_id != st.session_state.last_financial_file_id or not st.session_state.financial_load_error:
+            st.session_state.last_financial_file_id = current_financial_file_id
+            try:
+                # Placeholder: In a real scenario, call a load_financial_data function here
+                financial_data_loaded = pd.read_excel(io.BytesIO(uploaded_financial_file.getvalue())) # Basic load example
+                st.success("财务数据文件已加载 (占位符)。")
+                st.session_state.financial_load_error = None
+                financial_data_ready = True
+            except Exception as e:
+                error_msg = f"加载财务数据失败: {e}"
+                st.error(error_msg)
+                st.session_state.financial_load_error = error_msg
+                financial_data_ready = False
+    elif not uploaded_financial_file and st.session_state.last_financial_file_id is not None:
+        st.session_state.last_financial_file_id = None
+        st.session_state.financial_load_error = None
+        financial_data_ready = False
+
+    # Placeholder processing logic for CRM Data (similar structure)
+    crm_data_loaded = None
+    if uploaded_crm_file:
+        current_crm_file_id = uploaded_crm_file.file_id
+        if current_crm_file_id == st.session_state.last_crm_file_id and st.session_state.crm_load_error:
+            st.error(f"CRM数据加载错误: {st.session_state.crm_load_error}")
+            crm_data_ready = False
+        elif current_crm_file_id != st.session_state.last_crm_file_id or not st.session_state.crm_load_error:
+            st.session_state.last_crm_file_id = current_crm_file_id
+            try:
+                crm_data_loaded = pd.read_excel(io.BytesIO(uploaded_crm_file.getvalue()))
+                st.success("CRM数据文件已加载 (占位符)。")
+                st.session_state.crm_load_error = None
+                crm_data_ready = True
+            except Exception as e:
+                error_msg = f"加载CRM数据失败: {e}"
+                st.error(error_msg)
+                st.session_state.crm_load_error = error_msg
+                crm_data_ready = False
+    elif not uploaded_crm_file and st.session_state.last_crm_file_id is not None:
+        st.session_state.last_crm_file_id = None
+        st.session_state.crm_load_error = None
+        crm_data_ready = False
+
+    # Placeholder processing logic for Production Data (similar structure)
+    production_data_loaded = None
+    if uploaded_production_file:
+        current_production_file_id = uploaded_production_file.file_id
+        if current_production_file_id == st.session_state.last_production_file_id and st.session_state.production_load_error:
+            st.error(f"生产数据加载错误: {st.session_state.production_load_error}")
+            production_data_ready = False
+        elif current_production_file_id != st.session_state.last_production_file_id or not st.session_state.production_load_error:
+            st.session_state.last_production_file_id = current_production_file_id
+            try:
+                production_data_loaded = pd.read_excel(io.BytesIO(uploaded_production_file.getvalue()))
+                st.success("生产数据文件已加载 (占位符)。")
+                st.session_state.production_load_error = None
+                production_data_ready = True
+            except Exception as e:
+                error_msg = f"加载生产数据失败: {e}"
+                st.error(error_msg)
+                st.session_state.production_load_error = error_msg
+                production_data_ready = False
+    elif not uploaded_production_file and st.session_state.last_production_file_id is not None:
+        st.session_state.last_production_file_id = None
+        st.session_state.production_load_error = None
+        production_data_ready = False
+
+    # Placeholder processing logic for HR Data (similar structure)
+    hr_data_loaded = None
+    if uploaded_hr_file:
+        current_hr_file_id = uploaded_hr_file.file_id
+        if current_hr_file_id == st.session_state.last_hr_file_id and st.session_state.hr_load_error:
+            st.error(f"HR数据加载错误: {st.session_state.hr_load_error}")
+            hr_data_ready = False
+        elif current_hr_file_id != st.session_state.last_hr_file_id or not st.session_state.hr_load_error:
+            st.session_state.last_hr_file_id = current_hr_file_id
+            try:
+                hr_data_loaded = pd.read_excel(io.BytesIO(uploaded_hr_file.getvalue()))
+                st.success("HR数据文件已加载 (占位符)。")
+                st.session_state.hr_load_error = None
+                hr_data_ready = True
+            except Exception as e:
+                error_msg = f"加载HR数据失败: {e}"
+                st.error(error_msg)
+                st.session_state.hr_load_error = error_msg
+                hr_data_ready = False
+    elif not uploaded_hr_file and st.session_state.last_hr_file_id is not None:
+        st.session_state.last_hr_file_id = None
+        st.session_state.hr_load_error = None
+        hr_data_ready = False
+    # --- END NEW: Process Additional Data Files ---
 
     # --- Analysis Parameters (Only show if main data loaded successfully) ---
     selected_category = "全部" # Default value
@@ -899,8 +1047,8 @@ st.markdown(f"""<div style='text-align: center; padding: 15px 0 10px 0;'><h1 sty
 st.divider()
 
 # --- Main Content ---
-# Display Welcome Message if no files are uploaded at all
-if not uploaded_main_file and not uploaded_pricing_file:
+# Display Welcome Message if no files are uploaded at all (Check all potential uploaders now)
+if not any([uploaded_main_file, uploaded_pricing_file, uploaded_financial_file, uploaded_crm_file, uploaded_production_file, uploaded_hr_file]): # Adjusted condition
     # Use the Centered and refined welcome message
     st.markdown(
         f"""
@@ -913,7 +1061,11 @@ if not uploaded_main_file and not uploaded_pricing_file:
             <li style="margin-bottom: 10px;">📊 &nbsp; <strong>销售分析:</strong> 追踪趋势，聚焦核心产品。</li>
             <li style="margin-bottom: 10px;">📦 &nbsp; <strong>库存分析:</strong> 评估健康度，优化周转。</li>
             <li style="margin-bottom: 10px;">🛒 &nbsp; <strong>采购建议:</strong> 智能预测，精准补货。</li>
-            <li style="margin-bottom: 10px;">🏷️ &nbsp; <strong>定价工具:</strong> 成本+利润，一键定价 (向上取整)。</li>
+            <li style="margin-bottom: 10px;">🏷️ &nbsp; <strong>定价工具:</strong> 成本+利润，一键定价。</li>
+            <li style="margin-bottom: 10px;">💰 &nbsp; <strong>财务指标:</strong> 概览关键财务数据。</li>
+            <li style="margin-bottom: 10px;">👥 &nbsp; <strong>CRM 摘要:</strong> 洞察客户关系动态。</li>
+            <li style="margin-bottom: 10px;">🏭 &nbsp; <strong>生产监控:</strong> 跟踪生产运营效率。</li>
+            <li style="margin-bottom: 10px;">🧑‍💼 &nbsp; <strong>HR 概览:</strong> 掌握人力资源状况。</li>
         </ul>
         </div>
 
@@ -941,8 +1093,8 @@ if not uploaded_main_file and not uploaded_pricing_file:
         </div>
         """, unsafe_allow_html=True)
 
-# Display content if at least one file was uploaded and processed (or attempted)
-elif uploaded_main_file or uploaded_pricing_file:
+# Display content if at least one file was uploaded and processed (or attempted) - Check all potential uploaders
+elif any([uploaded_main_file, uploaded_pricing_file, uploaded_financial_file, uploaded_crm_file, uploaded_production_file, uploaded_hr_file]): # Adjusted condition
 
     metrics = {}
     stock_analysis = pd.DataFrame()
@@ -1028,8 +1180,27 @@ elif uploaded_main_file or uploaded_pricing_file:
         # If main_analysis_ready is False (loading failed), KPIs won't show. Error is shown in sidebar.
 
     # --- Display Tabs ---
-    tab_list = ["📊 销售分析", "📦 库存分析", "🛒 采购建议", "🏷️ 定价工具"]
-    tab_sales, tab_inventory, tab_purchase, tab_pricing = st.tabs(tab_list)
+    # --- Define Tabs (Including New Modules) ---
+    tab_list = [
+        "📊 销售分析", "📦 库存分析", "🛒 采购建议", "🏷️ 定价工具", # Existing
+        "💰 财务指标", "👥 CRM摘要", "🏭 生产监控", "🧑‍💼 HR概览", # New
+        "🔔 待办提醒", "📈 自定义分析" # New utility tabs
+    ]
+    tabs = st.tabs(tab_list)
+
+    # Assign tabs to variables for clarity
+    tab_sales = tabs[0]
+    tab_inventory = tabs[1]
+    tab_purchase = tabs[2]
+    tab_pricing = tabs[3]
+    tab_financial = tabs[4]
+    tab_crm = tabs[5]
+    tab_production = tabs[6]
+    tab_hr = tabs[7]
+    tab_alerts = tabs[8]
+    tab_custom_analysis = tabs[9]
+    # --- End Define Tabs ---
+    # --- End Define Tabs ---
 
     # --- Sales Analysis Tab ---
     with tab_sales:
@@ -1443,17 +1614,104 @@ elif uploaded_main_file or uploaded_pricing_file:
              st.info("请在左侧上传有效的 **价格调整** 文件 (需含 '产品ID'/'型号', '产品名称'/'品名', '采购价' 列) 以使用此工具。")
              # Show specific error if loading failed
              if st.session_state.pricing_load_error:
-                  st.error(f"文件加载失败: {st.session_state.pricing_load_error}")
+                 st.error(f"文件加载失败: {st.session_state.pricing_load_error}") # Corrected indentation
+     # --- NEW: Financial Metrics Tab ---
+    with tab_financial:
+        st.subheader("💰 财务指标概览")
+        if financial_data_ready and isinstance(financial_data_loaded, pd.DataFrame):
+            st.success("财务数据已加载。")
+            st.markdown("_(此处将显示关键财务指标，例如总收入、总支出、净利润、应收/应付账款等)_")
+            st.dataframe(financial_data_loaded.head(), use_container_width=True) # Display sample data
+            # TODO: Implement actual financial metric calculations and display
+        elif uploaded_financial_file and not financial_data_ready:
+            st.warning("财务数据文件已上传，但加载或处理失败。请检查侧边栏错误信息。")
+        else:
+            st.info("请在左侧上传 **财务数据** 文件以查看此模块。")
+
+    # --- NEW: CRM Summary Tab ---
+    with tab_crm:
+        st.subheader("👥 CRM 摘要")
+        if crm_data_ready and isinstance(crm_data_loaded, pd.DataFrame):
+            st.success("CRM 数据已加载。")
+            st.markdown("_(此处将显示 CRM 相关摘要，例如新增潜在客户、客户活动概览等)_")
+            st.dataframe(crm_data_loaded.head(), use_container_width=True) # Display sample data
+            # TODO: Implement actual CRM metric calculations and display
+        elif uploaded_crm_file and not crm_data_ready:
+            st.warning("CRM 数据文件已上传，但加载或处理失败。请检查侧边栏错误信息。")
+        else:
+            st.info("请在左侧上传 **CRM 数据** 文件以查看此模块。")
+
+    # --- NEW: Production Monitoring Tab ---
+    with tab_production:
+        st.subheader("🏭 生产/运营监控")
+        if production_data_ready and isinstance(production_data_loaded, pd.DataFrame):
+            st.success("生产数据已加载。")
+            st.markdown("_(此处将显示生产/运营相关指标，例如订单完成率、设备利用率、质量指标等)_")
+            st.dataframe(production_data_loaded.head(), use_container_width=True) # Display sample data
+            # TODO: Implement actual production metric calculations and display
+        elif uploaded_production_file and not production_data_ready:
+            st.warning("生产数据文件已上传，但加载或处理失败。请检查侧边栏错误信息。")
+        else:
+            st.info("请在左侧上传 **生产/运营数据** 文件以查看此模块。")
+
+    # --- NEW: HR Overview Tab ---
+    with tab_hr:
+        st.subheader("🧑‍💼 人力资源概览")
+        if hr_data_ready and isinstance(hr_data_loaded, pd.DataFrame):
+            st.success("HR 数据已加载。")
+            st.markdown("_(此处将显示 HR 相关概览，例如员工总数、部门分布、出勤概览等)_")
+            st.dataframe(hr_data_loaded.head(), use_container_width=True) # Display sample data
+            # TODO: Implement actual HR metric calculations and display
+        elif uploaded_hr_file and not hr_data_ready:
+            st.warning("HR 数据文件已上传，但加载或处理失败。请检查侧边栏错误信息。")
+        else:
+            st.info("请在左侧上传 **人力资源数据** 文件以查看此模块。")
+
+    # --- NEW: Alerts & Tasks Tab ---
+    with tab_alerts:
+        st.subheader("🔔 待办事项与提醒")
+        st.markdown("_(此区域将整合关键提醒，例如低库存预警、建议采购项目等)_")
+        # Example: Display low stock items (requires modification in calculate_metrics or here)
+        if main_analysis_ready and isinstance(stock_analysis, pd.DataFrame) and not stock_analysis.empty and '预计可用天数' in stock_analysis.columns:
+            low_stock_threshold_days = 7 # Example threshold
+            low_stock_items = stock_analysis[stock_analysis['预计可用天数'] <= low_stock_threshold_days]
+            if not low_stock_items.empty:
+                st.warning(f"⚠️ **低库存预警** (预计可用天数 <= {low_stock_threshold_days} 天):")
+                st.dataframe(low_stock_items[['产品名称', '当前库存', '预计可用天数']].head(10), use_container_width=True, hide_index=True)
+            else:
+                st.success("✅ 当前无明显低库存风险。")
+        else:
+            st.info("需要加载有效的 **百货城数据** 以生成库存预警。")
+
+        # Example: Display purchase suggestions summary
+        if main_analysis_ready and isinstance(purchase_suggestions, pd.DataFrame) and not purchase_suggestions.empty:
+             st.info(f"🛒 **采购建议提醒**: {len(purchase_suggestions)} 个产品建议采购。详情请见 '采购建议' 标签页。")
+        # TODO: Add other potential alerts (e.g., overdue tasks if CRM data is available)
+
+    # --- NEW: Custom Analysis Tab ---
+    with tab_custom_analysis:
+        st.subheader("📈 自定义分析 (占位符)")
+        st.info("此功能正在开发中。未来将允许您基于已加载的数据进行更灵活的探索和报表生成。")
+        # Placeholder for future features like:
+        # - Selecting data source (Sales, Stock, Finance, etc.)
+        # - Choosing columns for grouping/aggregation
+        # - Selecting chart types
+        # - Saving custom views
 
 
 # Fallback message if file upload was attempted but processing failed for *both* types (or only one was attempted and failed)
-# This might be redundant now with errors shown in sidebar/tabs, but can be a final catch-all.
-elif (uploaded_main_file and not main_analysis_ready) or (uploaded_pricing_file and not pricing_tool_ready):
-    st.error("❌ 上传的文件处理失败或包含无效数据。请检查侧边栏的错误信息，并根据提示检查文件格式和内容。")
+# This might be redundant now with errors shown in sidebar/tabs, but can be a final catch-all. Check all potential uploads.
+elif any([(uploaded_main_file and not main_analysis_ready),
+          (uploaded_pricing_file and not pricing_tool_ready),
+          (uploaded_financial_file and not financial_data_ready), # Check new states
+          (uploaded_crm_file and not crm_data_ready),             # Check new states
+          (uploaded_production_file and not production_data_ready), # Check new states
+          (uploaded_hr_file and not hr_data_ready)]):             # Check new states
+    st.error("❌ 部分上传的文件处理失败或包含无效数据。请检查侧边栏的错误信息，并根据提示检查文件格式和内容。")
 
 
-# Footer (appears only if a file was uploaded or attempted)
-if uploaded_main_file or uploaded_pricing_file:
+# Footer (appears only if any file was uploaded or attempted)
+if any([uploaded_main_file, uploaded_pricing_file, uploaded_financial_file, uploaded_crm_file, uploaded_production_file, uploaded_hr_file]): # Ensure footer shows if any file is uploaded
     st.markdown("---")
     try:
         current_year = datetime.now(APP_TIMEZONE).year
