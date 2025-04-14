@@ -691,6 +691,53 @@ with st.sidebar:
     st.markdown(f"<div style='text-align: center; font-size: 12px; color: gray;'>版本: {APP_VERSION}</div>", unsafe_allow_html=True)
     # Example User Info - Replace with actual authentication if needed
     st.markdown("<div style='text-align: center; font-size: 14px; color: gray; margin-bottom: 10px; margin-top: 5px;'>当前身份：<strong>管理员</strong> (示例)</div>", unsafe_allow_html=True)
+
+    # --- Real-time Clock Display using HTML/JS Component ---
+    html_code = """
+    <div style='text-align: center; font-size: 12px; color: gray; margin-top: 8px;'>
+        🇬🇷 希腊: <span id="athens-time">--:--:--</span>
+    </div>
+    <div style='text-align: center; font-size: 12px; color: gray; margin-top: 2px; margin-bottom: 8px;'>
+        🇨🇳 北京: <span id="beijing-time">--:--:--</span>
+    </div>
+
+    <script>
+    function updateClocks() {
+      const now = new Date();
+      const options = {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit',
+        hour12: false // Use 24-hour format
+      };
+
+      try {
+        // Athens Time (using Europe/Athens)
+        const athensTimeStr = now.toLocaleString('sv-SE', { ...options, timeZone: 'Europe/Athens' }); // sv-SE gives YYYY-MM-DD format
+        document.getElementById('athens-time').innerText = athensTimeStr;
+      } catch (e) {
+        document.getElementById('athens-time').innerText = '时间加载错误';
+        console.error("Error getting Athens time:", e);
+      }
+
+      try {
+        // Beijing Time (using Asia/Shanghai)
+        const beijingTimeStr = now.toLocaleString('sv-SE', { ...options, timeZone: 'Asia/Shanghai' }); // sv-SE gives YYYY-MM-DD format
+        document.getElementById('beijing-time').innerText = beijingTimeStr;
+      } catch (e) {
+        document.getElementById('beijing-time').innerText = '时间加载错误';
+        console.error("Error getting Beijing time:", e);
+      }
+    }
+
+    // Initial call to display time immediately
+    updateClocks();
+
+    // Update every second
+    setInterval(updateClocks, 1000);
+    </script>
+    """
+    components.html(html_code, height=60) # Adjust height as needed
+
     st.markdown("---")
 
     # --- File Uploaders ---
