@@ -180,7 +180,8 @@ def load_data(uploaded_file_content, uploaded_file_name):
                      df_loop.dropna(subset=[date_col], inplace=True) # Drop rows where date conversion failed
 
         # --- Column Validation ---
-        required_sales_cols = ["订单日期", "产品ID", "购买数量", "产品名称"]
+        # 添加 "销售额" 到必需列
+        required_sales_cols = ["订单日期", "产品ID", "购买数量", "产品名称", "销售额"]
         required_stock_cols = ["产品ID", "当前库存", "产品名称"] # Keep '采购价' optional here, validate numeric later
         required_purchase_cols = ["采购日期", "产品ID", "采购数量"] # Optional '产品分类'
 
@@ -194,7 +195,8 @@ def load_data(uploaded_file_content, uploaded_file_name):
 
         # --- Numeric Conversion ---
         num_cols_map = {
-            'sales': (sales_df, ["购买数量"]),
+            # 添加 "销售额" 到需要转换的数值列
+            'sales': (sales_df, ["购买数量", "销售额"]),
             'stock': (stock_df, ["当前库存", "采购价"]), #采购价 optional but convert if present
             'purchase': (purchase_df, ["采购数量"])
         }
@@ -336,6 +338,9 @@ def calculate_metrics(sales_df, stock_df, purchase_df, start_date, end_date):
     metrics_results = {}
     stock_analysis = pd.DataFrame()
     has_category_in_analysis = False
+    # 初始化毛利相关指标
+    metrics_results["total_gross_profit_period"] = 0
+    metrics_results["overall_gross_margin_period"] = 0.0
 
     try:
         # --- Sales Metrics ---
@@ -352,12 +357,13 @@ def calculate_metrics(sales_df, stock_df, purchase_df, start_date, end_date):
         metrics_results["total_sales_period"] = 0
         if '购买数量' in sales_filtered.columns:
             # Ensure the column is numeric before summing
+            # 同时处理销售额
             sales_filtered['购买数量_num_calc'] = pd.to_numeric(sales_filtered['购买数量'], errors='coerce').fillna(0)
+            sales_filtered['销售额_num_calc'] = pd.to_numeric(sales_filtered['销售额'], errors='coerce').fillna(0)
             metrics_results["total_sales_period"] = int(sales_filtered["购买数量_num_calc"].sum())
+            metrics_results["total_revenue_period"] = float(sales_filtered['销售额_num_calc'].sum()) # 计算总销售额
         else:
-             st.warning("销售数据缺少 '购买数量' 列，无法计算总销量。")
-
-
+             st.warning("销售数据缺少 '购买数量' 或 '销售额' 列，无法计算完整销售指标。")
         # Calculate average daily sales
         num_days_period = max(1, (end_ts - start_ts).days + 1) # Add 1 to include both start and end date
         metrics_results["avg_daily_sales_period"] = round((metrics_results["total_sales_period"] / num_days_period), 1)
@@ -392,8 +398,8 @@ def calculate_metrics(sales_df, stock_df, purchase_df, start_date, end_date):
         # --- Stock Analysis ---
         if not isinstance(stock_df, pd.DataFrame) or stock_df.empty or "产品ID" not in stock_df.columns or "当前库存" not in stock_df.columns:
              st.warning("库存数据无效或缺少必需列 ('产品ID', '当前库存')，无法进行详细库存分析。")
-             # Define empty dataframe with expected columns for consistency downstream
-             stock_analysis = pd.DataFrame(columns=["产品ID", "产品名称", "当前库存", "最后销售日期", "压货时间_天", "最后采购日期", "最后采购数量", "天数自上次采购", "期间销售量", "期间日均销量", "预计可用天数", "产品分类"])
+             # Define empty dataframe with expected columns for consistency downstream (添加毛利列)
+             stock_analysis = pd.DataFrame(columns=["产品ID", "产品名称", "当前库存", "最后销售日期", "压货时间_天", "最后采购日期", "最后采购数量", "天数自上次采购", "期间销售量", "期间销售额", "期间销售成本", "期间毛利", "毛利率", "期间日均销量", "预计可用天数", "产品分类"])
              metrics_results["total_stock_units"] = 0
              return metrics_results, stock_analysis, False # Return empty results but defined structure
 
@@ -409,10 +415,16 @@ def calculate_metrics(sales_df, stock_df, purchase_df, start_date, end_date):
         if has_category: stock_analysis_cols.append("产品分类") # Add category if available
         # Ensure only columns that actually exist in stock_df are selected
         stock_analysis_cols_present = [col for col in stock_analysis_cols if col in stock_df.columns]
-        # Use '采购价' if available for potential future use, but don't require it for analysis core
+        # Ensure '采购价' is included if available, as it's needed for margin calculation
         if '采购价' in stock_df.columns:
             stock_analysis_cols_present.append('采购价')
-
+        else:
+            # 如果库存数据中没有采购价，则无法计算毛利
+            st.warning("警告：库存数据缺少 '采购价' 列，无法计算毛利率。")
+            # 添加一个空的采购价列以便后续流程不报错，但毛利会是 NaN
+            stock_df['采购价'] = np.nan
+            if '采购价' not in stock_analysis_cols_present:
+                stock_analysis_cols_present.append('采购价')
         # Drop duplicates based on Product ID, keeping the first occurrence
         stock_analysis_base = stock_df[stock_analysis_cols_present].drop_duplicates(subset=["产品ID"], keep='first').copy()
 
@@ -486,8 +498,6 @@ def calculate_metrics(sales_df, stock_df, purchase_df, start_date, end_date):
 
                       # Fill NaN (no purchase record or error) with 9999, convert to int, clip max
                       stock_analysis["天数自上次采购"] = stock_analysis["天数自上次采购"].fillna(9999).astype(int).clip(upper=9999)
-                      # Fill NaN quantity with 0 and convert to int
-                      stock_analysis["最后采购数量"] = stock_analysis["最后采购数量"].fillna(0).astype(int)
 
                  except Exception as merge_err:
                       st.warning(f"合并采购数据时出错: {merge_err}")
@@ -495,30 +505,63 @@ def calculate_metrics(sales_df, stock_df, purchase_df, start_date, end_date):
                  st.caption("无有效的采购记录行可供合并。")
 
 
-        # --- Calculate Sales Within Period ---
+        # --- Calculate Sales & Revenue Within Period ---
         stock_analysis["期间销售量"] = 0 # Initialize
-        qty_col_sales_filtered = '购买数量_num_calc' # Use the numeric column created earlier
-        if not sales_filtered.empty and "产品ID" in sales_filtered.columns and qty_col_sales_filtered in sales_filtered.columns:
+        stock_analysis["期间销售额"] = 0.0 # Initialize
+        qty_col_sales_filtered = '购买数量_num_calc'
+        revenue_col_sales_filtered = '销售额_num_calc'
+
+        if not sales_filtered.empty and "产品ID" in sales_filtered.columns and qty_col_sales_filtered in sales_filtered.columns and revenue_col_sales_filtered in sales_filtered.columns:
              try:
-                 # Aggregate sales within the filtered period by product ID
-                 sales_in_period_agg = sales_filtered.groupby("产品ID")[qty_col_sales_filtered].sum()
+                 # Aggregate sales quantity and revenue within the filtered period by product ID
+                 sales_in_period_agg = sales_filtered.groupby("产品ID").agg(
+                     期间销售量_agg=(qty_col_sales_filtered, 'sum'),
+                     期间销售额_agg=(revenue_col_sales_filtered, 'sum')
+                 )
                  # Map the aggregated sales to the stock analysis table
                  if "产品ID" in stock_analysis.columns:
-                     stock_analysis['期间销售量'] = stock_analysis['产品ID'].map(sales_in_period_agg)
-                     # Fill products with no sales in the period with 0, convert to int
+                     stock_analysis['期间销售量'] = stock_analysis['产品ID'].map(sales_in_period_agg['期间销售量_agg'])
+                     stock_analysis['期间销售额'] = stock_analysis['产品ID'].map(sales_in_period_agg['期间销售额_agg'])
+                     # Fill products with no sales in the period with 0
                      stock_analysis["期间销售量"] = stock_analysis["期间销售量"].fillna(0).astype(int)
+                     stock_analysis["期间销售额"] = stock_analysis["期间销售额"].fillna(0.0).astype(float)
                  else:
-                     st.warning("库存分析缺少'产品ID'列，无法合并期间销售量。")
+                     st.warning("库存分析缺少'产品ID'列，无法合并期间销售数据。")
              except Exception as e:
-                 st.error(f"计算或合并期间销售量错误: {e}")
-
-
+                 st.error(f"计算或合并期间销售数据错误: {e}")
         # --- Calculate Average Daily Sales (Period) ---
         if "期间销售量" in stock_analysis.columns:
              stock_analysis["期间日均销量"] = (stock_analysis["期间销售量"] / num_days_period).round(2)
         else:
              stock_analysis["期间日均销量"] = 0.0 # Default if calculation failed
 
+
+        # --- Calculate Gross Margin ---
+        stock_analysis['期间销售成本'] = 0.0
+        stock_analysis['期间毛利'] = 0.0
+        stock_analysis['毛利率'] = 0.0
+
+        if '期间销售量' in stock_analysis.columns and '采购价' in stock_analysis.columns:
+            # Ensure '采购价' is numeric before calculation
+            stock_analysis['采购价_num_calc'] = pd.to_numeric(stock_analysis['采购价'], errors='coerce').fillna(0)
+            stock_analysis['期间销售成本'] = stock_analysis['期间销售量'] * stock_analysis['采购价_num_calc']
+            stock_analysis['期间销售成本'] = stock_analysis['期间销售成本'].fillna(0.0) # Ensure no NaNs
+
+            if '期间销售额' in stock_analysis.columns:
+                stock_analysis['期间毛利'] = stock_analysis['期间销售额'] - stock_analysis['期间销售成本']
+                stock_analysis['期间毛利'] = stock_analysis['期间毛利'].fillna(0.0) # Ensure no NaNs
+
+                # Calculate margin rate, handle division by zero
+                stock_analysis['毛利率'] = np.where(
+                    stock_analysis['期间销售额'] != 0, # Condition: sales amount is not zero
+                    stock_analysis['期间毛利'] / stock_analysis['期间销售额'], # Value if true
+                    0.0 # Value if false (sales amount is zero)
+                )
+                stock_analysis['毛利率'] = stock_analysis['毛利率'].fillna(0.0) # Ensure no NaNs from other sources
+            else:
+                st.warning("无法计算毛利和毛利率，缺少 '期间销售额' 数据。")
+        else:
+            st.warning("无法计算销售成本和毛利，缺少 '期间销售量' 或 '采购价' 数据。")
 
         # --- Calculate Estimated Stock Days ---
         stock_analysis['预计可用天数'] = 9999 # Initialize with default (infinite/unknown)
@@ -532,8 +575,6 @@ def calculate_metrics(sales_df, stock_df, purchase_df, start_date, end_date):
 
              # Fill NaN (e.g., from 0 sales) with 9999, round result, convert to int, clip max
              stock_analysis['预计可用天数'] = stock_analysis['预计可用天数'].fillna(9999).round().astype(int).clip(upper=9999)
-
-
         # --- Handle Product Category ---
         if has_category and "产品分类" not in stock_analysis.columns and "产品分类" in stock_df.columns:
              # If category exists in original stock but not merged (e.g., due to drop_duplicates issue), try re-mapping
@@ -557,8 +598,23 @@ def calculate_metrics(sales_df, stock_df, purchase_df, start_date, end_date):
         has_category_in_analysis = "产品分类" in stock_analysis.columns if not stock_analysis.empty else False
 
 
+        # --- Calculate Overall Gross Margin Metrics ---
+        if '期间毛利' in stock_analysis.columns and '期间销售额' in stock_analysis.columns:
+            total_gross_profit = stock_analysis['期间毛利'].sum()
+            total_revenue = stock_analysis['期间销售额'].sum() # Use already calculated sum if available, or sum here
+            metrics_results["total_gross_profit_period"] = float(total_gross_profit)
+            if total_revenue != 0:
+                metrics_results["overall_gross_margin_period"] = float(total_gross_profit / total_revenue)
+            else:
+                metrics_results["overall_gross_margin_period"] = 0.0
+        else:
+            # Set defaults if calculation wasn't possible
+            metrics_results["total_gross_profit_period"] = 0.0
+            metrics_results["overall_gross_margin_period"] = 0.0
+
+
         # --- Cleanup Temporary Columns ---
-        temp_cols_to_drop = ['购买数量_num_calc', '当前库存_num_calc']
+        temp_cols_to_drop = ['购买数量_num_calc', '销售额_num_calc', '当前库存_num_calc', '采购价_num_calc']
         stock_analysis = stock_analysis.drop(columns=[col for col in temp_cols_to_drop if col in stock_analysis.columns], errors='ignore')
 
         # --- Return results ---
@@ -567,8 +623,8 @@ def calculate_metrics(sales_df, stock_df, purchase_df, start_date, end_date):
     except Exception as e:
         st.error(f"在 calculate_metrics 中发生未预料的错误: {e.__class__.__name__}: {e}")
         traceback.print_exc() # Log detailed error to console
-        # Return empty but defined structures
-        return {}, pd.DataFrame(columns=["产品ID", "产品名称", "当前库存", "最后销售日期", "压货时间_天", "最后采购日期", "最后采购数量", "天数自上次采购", "期间销售量", "期间日均销量", "预计可用天数", "产品分类"]), False
+        # Return empty but defined structures (add margin columns)
+        return {}, pd.DataFrame(columns=["产品ID", "产品名称", "当前库存", "最后销售日期", "压货时间_天", "最后采购日期", "最后采购数量", "天数自上次采购", "期间销售量", "期间销售额", "期间销售成本", "期间毛利", "毛利率", "期间日均销量", "预计可用天数", "产品分类"]), False
 
 
 # --- calculate_purchase_suggestions 函数 ---
@@ -999,95 +1055,95 @@ with st.sidebar:
     safety_days_input = 7 # Default safety days
 
     if main_analysis_ready:
-        st.markdown("#### ⚙️ 分析参数设置")
+        with st.expander("⚙️ 分析参数设置", expanded=False): # Wrapped in expander
 
-        # Category Filter
-        if has_category_column_main:
-            try:
-                # Get unique categories, convert to string, sort, handle potential NaN/None
-                all_categories = sorted([str(cat) for cat in main_stock_data["产品分类"].dropna().unique()])
-                options = ["全部"] + [cat for cat in all_categories if cat != "全部"] # Ensure "全部" is first
-                selected_category = st.selectbox(
-                    "🗂️ 产品分类筛选",
-                    options=options,
-                    index=0, # Default to "全部"
-                    key="category_select_key"
-                )
-            except Exception as cat_err:
-                st.warning(f"加载产品分类选项时出错: {cat_err}")
-                selected_category = "全部" # Fallback
-                has_category_column_main = False # Disable filtering if error occurs
-        else:
-            selected_category = "全部" # Set default if no category data
-
-        # Date Range Selector
-        st.markdown("##### 🗓️ 销售分析周期")
-        min_date_allowed = None
-        max_date_allowed = None
-        if main_sales_data is not None and not main_sales_data.empty and '订单日期' in main_sales_data.columns:
-             # Use already converted and cleaned dates
-             valid_dates = main_sales_data['订单日期'].dropna()
-             if not valid_dates.empty:
-                 try:
-                      min_date_allowed = valid_dates.min().date()
-                      max_date_allowed = valid_dates.max().date()
-                 except Exception as date_parse_err:
-                      st.warning(f"无法解析销售数据中的日期范围: {date_parse_err}")
-
-        # Determine final min/max for the date picker, considering data range and default range
-        final_min_date = min(min_date_allowed, default_start_date) if min_date_allowed else default_start_date
-        final_max_date = max(max_date_allowed, default_end_date) if max_date_allowed else default_end_date
-        # Ensure min is not after max
-        if final_min_date > final_max_date: final_min_date = final_max_date
-
-        # Adjust default start/end to be within the allowed range
-        actual_default_start = max(final_min_date, default_start_date)
-        actual_default_end = min(final_max_date, default_end_date)
-        # Ensure start is not after end in default values
-        if actual_default_start > actual_default_end: actual_default_start = actual_default_end
-
-        try:
-            date_range_input = st.date_input(
-                "选择周期",
-                value=(actual_default_start, actual_default_end), # Use adjusted defaults
-                min_value=final_min_date,
-                max_value=final_max_date,
-                key="date_range_selector",
-                help="选择用于计算期间日均销量等指标的时间范围。"
-            )
-            # Validate the input tuple/list
-            if isinstance(date_range_input, (tuple, list)) and len(date_range_input) == 2:
-                start_d, end_d = date_range_input
-                if start_d <= end_d:
-                    date_range = (start_d, end_d) # Update date_range if valid
-                else:
-                    st.warning("开始日期不能晚于结束日期，使用上次有效或默认范围。")
-                    # Keep previous date_range value
+            # Category Filter (Indented)
+            if has_category_column_main:
+                try:
+                    # Get unique categories, convert to string, sort, handle potential NaN/None
+                    all_categories = sorted([str(cat) for cat in main_stock_data["产品分类"].dropna().unique()])
+                    options = ["全部"] + [cat for cat in all_categories if cat != "全部"] # Ensure "全部" is first
+                    selected_category = st.selectbox(
+                        "🗂️ 产品分类筛选",
+                        options=options,
+                        index=0, # Default to "全部"
+                        key="category_select_key"
+                    )
+                except Exception as cat_err:
+                    st.warning(f"加载产品分类选项时出错: {cat_err}")
+                    selected_category = "全部" # Fallback
+                    has_category_column_main = False # Disable filtering if error occurs
             else:
-                # Handle cases where date_input might return a single date if max_value = min_value
-                 if isinstance(date_range_input, datetime.date):
-                     date_range = (date_range_input, date_range_input)
-                 else:
-                     st.warning("日期范围选择无效，将使用上次有效或默认范围。")
-                     # Keep previous date_range value
-        except Exception as date_err:
-            st.warning(f"日期范围设置时出错: {date_err}，将使用默认范围。")
-            date_range = (actual_default_start, actual_default_end) # Fallback to defaults on error
+                selected_category = "全部" # Set default if no category data
 
-        # Inventory/Purchase Parameters
-        st.markdown("##### ⚙️ 库存与采购参数")
-        target_days_input = st.number_input(
-            "目标库存天数",
-            min_value=1, max_value=180, value=30, step=1,
-            key="target_days_key",
-            help="期望库存能满足多少天的销售"
-        )
-        safety_days_input = st.number_input(
-            "安全库存天数",
-            min_value=0, max_value=90, value=7, step=1,
-            key="safety_days_key",
-            help="额外的缓冲天数"
-        )
+            # Date Range Selector (Indented)
+            st.markdown("##### 🗓️ 销售分析周期")
+            min_date_allowed = None
+            max_date_allowed = None
+            if main_sales_data is not None and not main_sales_data.empty and '订单日期' in main_sales_data.columns:
+                 # Use already converted and cleaned dates
+                 valid_dates = main_sales_data['订单日期'].dropna()
+                 if not valid_dates.empty:
+                     try:
+                          min_date_allowed = valid_dates.min().date()
+                          max_date_allowed = valid_dates.max().date()
+                     except Exception as date_parse_err:
+                          st.warning(f"无法解析销售数据中的日期范围: {date_parse_err}")
+
+            # Determine final min/max for the date picker, considering data range and default range
+            final_min_date = min(min_date_allowed, default_start_date) if min_date_allowed else default_start_date
+            final_max_date = max(max_date_allowed, default_end_date) if max_date_allowed else default_end_date
+            # Ensure min is not after max
+            if final_min_date > final_max_date: final_min_date = final_max_date
+
+            # Adjust default start/end to be within the allowed range
+            actual_default_start = max(final_min_date, default_start_date)
+            actual_default_end = min(final_max_date, default_end_date)
+            # Ensure start is not after end in default values
+            if actual_default_start > actual_default_end: actual_default_start = actual_default_end
+
+            try:
+                date_range_input = st.date_input(
+                    "选择周期",
+                    value=(actual_default_start, actual_default_end), # Use adjusted defaults
+                    min_value=final_min_date,
+                    max_value=final_max_date,
+                    key="date_range_selector",
+                    help="选择用于计算期间日均销量等指标的时间范围。"
+                )
+                # Validate the input tuple/list
+                if isinstance(date_range_input, (tuple, list)) and len(date_range_input) == 2:
+                    start_d, end_d = date_range_input
+                    if start_d <= end_d:
+                        date_range = (start_d, end_d) # Update date_range if valid
+                    else:
+                        st.warning("开始日期不能晚于结束日期，使用上次有效或默认范围。")
+                        # Keep previous date_range value
+                else:
+                    # Handle cases where date_input might return a single date if max_value = min_value
+                     if isinstance(date_range_input, datetime.date):
+                         date_range = (date_range_input, date_range_input)
+                     else:
+                         st.warning("日期范围选择无效，将使用上次有效或默认范围。")
+                         # Keep previous date_range value
+            except Exception as date_err:
+                st.warning(f"日期范围设置时出错: {date_err}，将使用默认范围。")
+                date_range = (actual_default_start, actual_default_end) # Fallback to defaults on error
+
+            # Inventory/Purchase Parameters (Indented)
+            st.markdown("##### ⚙️ 库存与采购参数")
+            target_days_input = st.number_input(
+                "目标库存天数",
+                min_value=1, max_value=180, value=30, step=1,
+                key="target_days_key",
+                help="期望库存能满足多少天的销售"
+            )
+            safety_days_input = st.number_input(
+                "安全库存天数",
+                min_value=0, max_value=90, value=7, step=1,
+                key="safety_days_key",
+                help="额外的缓冲天数"
+            )
 
 # --- Main Area ---
 st.markdown(f"""<div style='text-align: center; padding: 15px 0 10px 0;'><h1 style='margin-bottom: 5px; color: #262730;'>📊 TP.STER 智能数据平台 {APP_VERSION}</h1><p style='color: #5C5C5C; font-size: 18px; font-weight: 300; margin-top: 5px;'>洞察数据价值 · 驱动智能决策 · 优化供应链管理</p></div>""", unsafe_allow_html=True)
@@ -1203,22 +1259,25 @@ elif any([uploaded_main_file, uploaded_pricing_file, uploaded_financial_file, up
             if data_filtered_message:
                 st.markdown(f"**筛选分类:** `{selected_category}`") # Show filter again if applied
 
-            kpi_cols = st.columns(5)
+            # 扩展 KPI 列数以容纳毛利指标
+            kpi_cols = st.columns(7)
             # Use .get() with default values for robustness
             kpi_cols[0].metric("期间总销量", f"{metrics.get('total_sales_period', 0):,} 个")
-            kpi_cols[1].metric("期间日均销量", f"{metrics.get('avg_daily_sales_period', 0):,.1f} 个/天")
+            kpi_cols[1].metric("期间总销售额", f"€ {metrics.get('total_revenue_period', 0):,.2f}") # 新增总销售额
+            kpi_cols[2].metric("期间总毛利", f"€ {metrics.get('total_gross_profit_period', 0):,.2f}", help="期间总销售额 - 期间总销售成本") # 新增总毛利
+            kpi_cols[3].metric("期间毛利率", f"{metrics.get('overall_gross_margin_period', 0):.1%}", help="期间总毛利 / 期间总销售额") # 新增毛利率
 
             # Calculate SKU count from the final stock_analysis dataframe
             sku_count = stock_analysis['产品ID'].nunique() if isinstance(stock_analysis, pd.DataFrame) and not stock_analysis.empty else 0
-            kpi_cols[2].metric("分析产品 SKU 数", f"{sku_count:,}")
+            kpi_cols[4].metric("分析产品 SKU 数", f"{sku_count:,}")
 
             # Calculate total stock from the final stock_analysis dataframe
             total_stock_kpi = 0
             if isinstance(stock_analysis, pd.DataFrame) and '当前库存' in stock_analysis.columns:
                  total_stock_kpi = int(pd.to_numeric(stock_analysis['当前库存'], errors='coerce').fillna(0).sum())
-            kpi_cols[3].metric("当前总库存", f"{total_stock_kpi:,} 个")
+            kpi_cols[5].metric("当前总库存", f"{total_stock_kpi:,} 个")
 
-            kpi_cols[4].metric("期间热销产品", metrics.get('top_product_period', '无'))
+            kpi_cols[6].metric("期间热销产品", metrics.get('top_product_period', '无'))
             st.divider()
         elif main_analysis_ready and not metrics:
              # This case might happen if calculate_metrics itself failed internally but didn't raise exception caught above
@@ -1285,8 +1344,28 @@ elif any([uploaded_main_file, uploaded_pricing_file, uploaded_financial_file, up
 
                           # Format x-axis dates
                           ax_line.xaxis.set_major_formatter(mdates.DateFormatter("%Y年%m月"))
-                          # Adjust date locator interval based on data length
-                          ax_line.xaxis.set_major_locator(mdates.MonthLocator(interval=max(1, len(plot_index)//6)))
+
+                          # --- Dynamic Date Locator Interval ---
+                          # Calculate the number of months in the selected range
+                          start_date_dt, end_date_dt = date_range # Get dates from sidebar selection
+                          num_months_in_range = (end_date_dt.year - start_date_dt.year) * 12 + end_date_dt.month - start_date_dt.month + 1
+
+                          # Determine interval based on the number of months in the selected range
+                          if num_months_in_range <= 1: # Very short range (e.g., within a month)
+                              locator_interval = 1 # Show the month(s) involved
+                          elif num_months_in_range <= 12: # Up to a year
+                              locator_interval = 1 # Show every month
+                          elif num_months_in_range <= 24: # Up to two years
+                              locator_interval = 2 # Show every 2 months
+                          elif num_months_in_range <= 48: # Up to four years
+                              locator_interval = 3 # Show every 3 months
+                          else: # Very long range
+                              locator_interval = 6 # Show every 6 months
+
+                          # Apply the determined locator interval
+                          ax_line.xaxis.set_major_locator(mdates.MonthLocator(interval=locator_interval))
+                          # --- End Dynamic Date Locator Interval ---
+
                           ax_line.grid(axis='y', linestyle=':', alpha=0.7)
                           fig_line.autofmt_xdate(rotation=30, ha='right') # Auto format date labels
                           plt.tight_layout() # Adjust layout
@@ -1420,24 +1499,29 @@ elif any([uploaded_main_file, uploaded_pricing_file, uploaded_financial_file, up
                  "产品名称": st.column_config.TextColumn("产品名称", width="medium", help="产品名称"),
                  "产品分类": st.column_config.TextColumn("分类", width="small", help="产品所属分类"),
                  "当前库存": st.column_config.NumberColumn("当前库存", format="%d 个", help="当前实际库存数量"),
+                 "期间销售量": st.column_config.NumberColumn("期间销售量", format="%d 个", help="所选分析周期内的总销售数量"),
+                 "期间销售额": st.column_config.NumberColumn("期间销售额 (€)", format="%.2f", help="所选分析周期内的总销售额"), # 新增
+                 "期间销售成本": st.column_config.NumberColumn("期间销售成本 (€)", format="%.2f", help="期间销售量 * 采购价"), # 新增
+                 "期间毛利": st.column_config.NumberColumn("期间毛利 (€)", format="%.2f", help="期间销售额 - 期间销售成本"), # 新增
+                 "毛利率": st.column_config.NumberColumn("毛利率", format="%.1f%%", help="(期间毛利 / 期间销售额) * 100"), # 新增
                  "期间日均销量": st.column_config.NumberColumn("期间日均销售", format="%.2f 个/天", help="所选分析周期内的平均每日销售数量"),
                  "预计可用天数": st.column_config.NumberColumn("预计可用天数", help="当前库存预计可维持天数 (9999代表>9999天或无近期销量)", format="%d 天"),
                  "压货时间_天": st.column_config.NumberColumn("压货天数", help="自上次售出至今的天数 (9999代表从未售出或无记录)", format="%d 天"),
                  "最后销售日期": st.column_config.DateColumn("最后销售日期", format="YYYY-MM-DD", help="该产品最后一次有销售记录的日期"),
                  "天数自上次采购": st.column_config.NumberColumn("距上次采购", help="自上次采购至今的天数 (9999代表无采购记录)", format="%d 天"),
-                 "期间销售量": st.column_config.NumberColumn("期间销售量", format="%d 个", help="所选分析周期内的总销售数量"),
                  "最后采购日期": st.column_config.DateColumn("最后采购日期", format="YYYY-MM-DD", help="该产品最后一次有采购记录的日期"),
                  "最后采购数量": st.column_config.NumberColumn("最后采购数量", format="%d 个", help="最后一次采购的数量"),
                  "采购价": st.column_config.NumberColumn("采购价 (€)", format="%.2f", help="库存数据中记录的采购单价"),
-                 # Add other relevant columns if needed
              }
 
              # Define which columns to show and in what order
              stock_cols_to_show_final = ["产品名称"]
              if has_category_data: stock_cols_to_show_final.append("产品分类")
+             # 添加毛利相关列到显示列表
              stock_cols_to_show_final.extend([
-                 "当前库存", "期间日均销量", "预计可用天数", "压货时间_天",
-                 "最后销售日期", "天数自上次采购", "期间销售量", "最后采购日期", "最后采购数量", "采购价"
+                 "当前库存", "期间销售量", "期间销售额", "期间销售成本", "期间毛利", "毛利率",
+                 "期间日均销量", "预计可用天数", "压货时间_天",
+                 "最后销售日期", "天数自上次采购", "最后采购日期", "最后采购数量", "采购价"
              ])
 
              # Filter columns to only those present in the dataframe and configure them
@@ -1458,7 +1542,8 @@ elif any([uploaded_main_file, uploaded_pricing_file, uploaded_financial_file, up
                  num_rows="fixed", # Fixed height based on TOP_N_DISPLAY
                  disabled=True, # Make table read-only
                  key="stock_data_editor",
-                 column_config=dynamic_stock_config,
+                 # 格式化毛利率为百分比
+                 column_config={**dynamic_stock_config, "毛利率": st.column_config.NumberColumn("毛利率", format="%.1f%%")},
                  hide_index=True
              )
              st.caption(f"注：表格仅显示排序后的前 {len(stock_analysis_display_limited)} 条记录 (共 {len(stock_analysis_sorted)} 条)。")
