@@ -19,12 +19,18 @@ import math # Added for ceiling rounding
 import base64 # Added for image encoding
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from openai import OpenAI
+import requests # Added for API calls
+import time # Added for retry logic
 
 
 
 # --- Constants ---
 TOP_N_DISPLAY = 150 # Max rows to display in tables (performance)
 APP_TIMEZONE_STR = 'Europe/Athens' # Define standard timezone for calculations
+API_MAX_RETRIES = 3 # Max retries for API calls
+API_TIMEOUT = 10 # Timeout in seconds for API calls
+LOW_STOCK_THRESHOLD = 10 # Threshold for low stock warning
+INVENTORY_API_URL = "https://api.example.com/inventory" # Default inventory API URL
 
 # Use current date for versioning
 try:
