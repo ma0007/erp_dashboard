@@ -1,9 +1,10 @@
-streamlit
 pandas
-matplotlib
-PyYAML
-streamlit-authenticator
-openpyxl
-Pillow
-statsmodels>=0.13.0
 numpy
+matplotlib
+streamlit
+statsmodels>=0.13.0
+openai>=1.0.0
+deepseek-api
+pytz
+requests
+openpyxl
