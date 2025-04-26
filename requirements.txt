@@ -5,3 +5,5 @@ PyYAML
 streamlit-authenticator
 openpyxl
 Pillow
+statsmodels>=0.13.0
+numpy
