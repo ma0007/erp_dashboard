@@ -2,8 +2,8 @@ pandas
 numpy
 matplotlib
 streamlit
-statsmodels>=0.13.0
-openai>=1.0.0
+statsmodels
+openai
 deepseek-api
 pytz
 requests
